@@ -19,7 +19,7 @@ struct ImageRow: Identifiable {
 @MainActor @Observable
 final class Workspace {
     var rows: [ImageRow] = []
-    var selection: UUID?
+    var selection: Set<UUID> = []
     var busy = false
     var mutating = false
     var message = "Add screenshots to get started."
@@ -45,11 +45,26 @@ final class Workspace {
         refreshModel()
         Task { await refreshHistory(reconcile: true) }
     }
-    var selected: ImageRow? { rows.first { $0.id == selection } }
+    var selected: ImageRow? { rows.first { selection.contains($0.id) } }
     var eligible: [ImageRow] { rows.filter { $0.included && !$0.renamed && !$0.proposed.isEmpty && $0.proposed != $0.url.lastPathComponent && access.permits($0.url) } }
     var canGenerate: Bool { modelAvailable && !busy && rows.contains { $0.included && !$0.renamed && !$0.edited && $0.title.isEmpty } }
     var undoBatch: RenameBatch? { batches.last { $0.entries.contains { $0.location == .renamed && !$0.pending } } }
-    var redoBatch: RenameBatch? { batches.last { $0.entries.contains { $0.location == .original && !$0.pending } } }
+    var redoBatch: RenameBatch? { batches.last { $0.lastRestoreForward == false && $0.entries.contains { $0.location == .original && !$0.pending } } }
+
+    private var textUndo: UndoManager? {
+        guard let editor = NSApp.keyWindow?.firstResponder as? NSTextView, editor.isEditable else { return nil }
+        return editor.undoManager
+    }
+    var canUndo: Bool { textUndo.map { $0.canUndo } ?? (undoBatch != nil) }
+    var canRedo: Bool { textUndo.map { $0.canRedo } ?? (redoBatch != nil) }
+    func undo() {
+        if let manager = textUndo { manager.undo() }
+        else if let batch = undoBatch { restore(batch, forward: false) }
+    }
+    func redo() {
+        if let manager = textUndo { manager.redo() }
+        else if let batch = redoBatch { restore(batch, forward: true) }
+    }
 
     func refreshModel() {
         switch SystemLanguageModel.default.availability {
@@ -109,7 +124,7 @@ final class Workspace {
                 }
             }
             skipped = imported.skipped
-            if selection == nil { selection = rows.first?.id }
+            if selection.isEmpty, let first = rows.first { selection = [first.id] }
             await refreshOccupancy()
             busy = false; job = nil
             message = (Task.isCancelled ? "Import cancelled. " : "") + "\(rows.count) images added" + (skipped.isEmpty ? "." : " · \(skipped.count) items skipped.")
@@ -125,8 +140,8 @@ final class Workspace {
         rows[index].included = value; replan()
     }
     func includeAll(_ value: Bool) { guard !busy else { return }; for i in rows.indices { rows[i].included = value }; replan() }
-    func removeSelected() { guard !busy else { return }; rows.removeAll { $0.id == selection }; selection = rows.first?.id; replan() }
-    func clearList() { guard !busy else { return }; rows.removeAll(); selection = nil; message = "Add screenshots to get started." }
+    func removeSelected() { guard !busy else { return }; rows.removeAll { selection.contains($0.id) }; selection = rows.first.map { [$0.id] } ?? []; replan() }
+    func clearList() { guard !busy else { return }; rows.removeAll(); selection = []; message = "Add screenshots to get started." }
 
     func generate(only id: UUID? = nil) {
         guard !busy, modelAvailable else { return }

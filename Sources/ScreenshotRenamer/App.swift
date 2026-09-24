@@ -16,14 +16,14 @@ struct ScreenshotRenamerApp: App {
                 Button("Add Folder…") { workspace.add(folder: true) }.keyboardShortcut("o", modifiers: [.command, .shift]).disabled(workspace.busy)
             }
             CommandGroup(replacing: .undoRedo) {
-                Button("Undo Rename Batch") { if let batch = workspace.undoBatch { workspace.restore(batch, forward: false) } }
-                    .keyboardShortcut("z").disabled(workspace.busy || workspace.undoBatch == nil)
-                Button("Redo Rename Batch") { if let batch = workspace.redoBatch { workspace.restore(batch, forward: true) } }
-                    .keyboardShortcut("z", modifiers: [.command, .shift]).disabled(workspace.busy || workspace.redoBatch == nil)
+                Button("Undo") { workspace.undo() }
+                    .keyboardShortcut("z").disabled(workspace.busy || !workspace.canUndo)
+                Button("Redo") { workspace.redo() }
+                    .keyboardShortcut("z", modifiers: [.command, .shift]).disabled(workspace.busy || !workspace.canRedo)
             }
             CommandMenu("Images") {
                 Button("Generate Names") { workspace.generate() }.keyboardShortcut("g").disabled(!workspace.canGenerate)
-                Button("Preview Image") { workspace.showingPreview = true }.keyboardShortcut(" ", modifiers: []).disabled(workspace.selected == nil)
+                Button("Preview Image") { workspace.showingPreview = true }.keyboardShortcut("y").disabled(workspace.selected == nil)
                 Button("Show History") { workspace.showingHistory = true }.keyboardShortcut("h", modifiers: [.command, .shift])
                 Divider()
                 Button("Include All") { workspace.includeAll(true) }.disabled(workspace.busy)

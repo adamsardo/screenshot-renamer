@@ -1,0 +1,31 @@
+name: Publish preview release
+on:
+  push:
+    tags: ['v*-preview.*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: xcode-27
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Safety tests
+        run: swift test
+      - name: Package preview
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: VERSION="${RELEASE_TAG#v}" ./scripts/package.sh
+      - name: Verify disk image
+        run: hdiutil verify dist/*.dmg
+      - name: Publish DMG and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" dist/*.dmg dist/*.sha256 \
+            --verify-tag --prerelease \
+            --title "Screenshot Renamer $RELEASE_TAG — Developer Preview" \
+            --notes-file docs/preview-release.md

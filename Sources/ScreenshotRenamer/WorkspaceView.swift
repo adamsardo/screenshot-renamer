@@ -104,6 +104,11 @@ struct WorkspaceView: View {
                     Text(row.renamed ? "Renamed" : workspace.needsAccess(row) ? "Folder access needed" : row.status).font(.callout)
                 }.width(min: 110, ideal: 140)
             }
+            .onKeyPress(.space) {
+                guard workspace.selected != nil else { return .ignored }
+                workspace.showingPreview = true
+                return .handled
+            }
         }
     }
 

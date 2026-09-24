@@ -14,10 +14,25 @@ public struct Fingerprint: Codable, Sendable, Equatable {
         var info = stat()
         guard lstat(url.path, &info) == 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         guard info.st_mode & S_IFMT == S_IFREG else { throw RenameError.unsupported }
-        let handle = try FileHandle(forReadingFrom: url)
+        guard info.st_flags & 0x40000000 == 0 else {
+            throw RenameError.invalidName("Download the file in Finder before continuing.")
+        }
+        let descriptor = open(url.path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+        guard descriptor >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        let handle = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
         defer { try? handle.close() }
+        var opened = stat()
+        guard fstat(descriptor, &opened) == 0, opened.st_dev == info.st_dev, opened.st_ino == info.st_ino,
+              opened.st_mode & S_IFMT == S_IFREG else { throw RenameError.changed }
         var hash = SHA256()
-        while let data = try handle.read(upToCount: 1_048_576), !data.isEmpty { hash.update(data: data) }
+        while let data = try handle.read(upToCount: 1_048_576), !data.isEmpty {
+            try Task.checkCancellation()
+            hash.update(data: data)
+        }
+        var finished = stat()
+        guard fstat(descriptor, &finished) == 0, finished.st_size == info.st_size,
+              finished.st_mtimespec.tv_sec == info.st_mtimespec.tv_sec,
+              finished.st_mtimespec.tv_nsec == info.st_mtimespec.tv_nsec else { throw RenameError.changed }
         return Fingerprint(device: info.st_dev, inode: info.st_ino, size: info.st_size,
                            modifiedSeconds: Int64(info.st_mtimespec.tv_sec), modifiedNanoseconds: Int64(info.st_mtimespec.tv_nsec),
                            digest: hash.finalize().map { String(format: "%02x", $0) }.joined())
@@ -48,6 +63,7 @@ public struct RenameBatch: Codable, Identifiable, Sendable {
     public let id: UUID
     public let date: Date
     public var entries: [HistoryEntry]
+    public var lastRestoreForward: Bool?
 }
 
 /// All filesystem mutations and durable journal updates run serially in this actor.
@@ -79,6 +95,7 @@ public actor RenameEngine {
                          renamed: $0.source.deletingLastPathComponent().appendingPathComponent($0.name),
                          fingerprint: $0.fingerprint, location: .original, pending: false)
         })
+        for i in batches.indices { batches[i].lastRestoreForward = nil }
         batches.append(batch)
         try persist()
         let index = batches.count - 1
@@ -92,6 +109,7 @@ public actor RenameEngine {
     public func restore(batchID: UUID, forward: Bool) throws -> RenameBatch {
         try load()
         guard let index = batches.firstIndex(where: { $0.id == batchID }) else { throw RenameError.changed }
+        batches[index].lastRestoreForward = forward
         let indices = forward ? Array(batches[index].entries.indices) : Array(batches[index].entries.indices.reversed())
         for item in indices {
             if Task.isCancelled { break }

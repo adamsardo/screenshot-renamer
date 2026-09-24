@@ -9,6 +9,8 @@ public struct CaptureDate: Codable, Sendable, Equatable {
         if filename.hasPrefix("CleanShot ") || filename.hasPrefix("Screenshot ") || filename.hasPrefix("Screen Shot ") {
             if let value = extract(filename) { return .init(value: value, source: "Capture filename") }
         }
+        if let range = filename.range(of: #" — \d{4}-\d{2}-\d{2}( \(\d+\))?\.[A-Za-z0-9]+$"#, options: .regularExpression),
+           let value = extract(String(filename[range])) { return .init(value: value, source: "Previously named capture date") }
         if let metadata, let value = extract(metadata.replacingOccurrences(of: ":", with: "-")) {
             return .init(value: value, source: "Image capture metadata")
         }

@@ -1,5 +1,6 @@
 import Testing
 import Foundation
+import Darwin
 @testable import RenamerCore
 
 struct FilenameTests {
@@ -125,4 +126,59 @@ struct SafetyTests {
         #expect(recovered[0].entries[0].location == .uncertain)
         await #expect(throws: (any Error).self) { try await engine.clearHistory() }
     }
+    @Test func caseAndUnicodeCollisionsAreProtected() async throws {
+        let directory = try fixture(); defer { try? FileManager.default.removeItem(at: directory) }
+        let request = try request(directory, name: "Café.png")
+        try Data("existing".utf8).write(to: directory.appendingPathComponent("CAFE\u{301}.png"))
+        let batch = try await RenameEngine(journalURL: directory.appendingPathComponent("history.json")).apply([request])
+        #expect(batch.entries[0].location == .original)
+        #expect(batch.entries[0].error != nil)
+    }
+    @Test func corruptedJournalFailsClosed() async throws {
+        let directory = try fixture(); defer { try? FileManager.default.removeItem(at: directory) }
+        let request = try request(directory)
+        let journal = directory.appendingPathComponent("history.json")
+        try Data("corrupt history".utf8).write(to: journal)
+        let engine = RenameEngine(journalURL: journal)
+        await #expect(throws: (any Error).self) { try await engine.apply([request]) }
+        #expect(try Fingerprint.read(request.source) == request.fingerprint)
+        #expect(try String(contentsOf: journal, encoding: .utf8) == "corrupt history")
+    }
+    @Test func lockedFileIsNotRenamed() async throws {
+        let directory = try fixture(); defer { try? FileManager.default.removeItem(at: directory) }
+        let request = try request(directory)
+        #expect(chflags(request.source.path, UInt32(UF_IMMUTABLE)) == 0)
+        defer { _ = chflags(request.source.path, 0) }
+        let batch = try await RenameEngine(journalURL: directory.appendingPathComponent("history.json")).apply([request])
+        #expect(batch.entries[0].location == .original)
+        #expect(batch.entries[0].error != nil)
+        #expect(try Fingerprint.read(request.source) == request.fingerprint)
+    }
+    @Test func metadataSurvivesRenameAndUndo() async throws {
+        let directory = try fixture(); defer { try? FileManager.default.removeItem(at: directory) }
+        let request = try request(directory)
+        let attribute = "preserve metadata"
+        let result = attribute.withCString { setxattr(request.source.path, "io.github.screenshot-renamer.test", $0, attribute.utf8.count, 0, 0) }
+        #expect(result == 0)
+        let before = try FileManager.default.attributesOfItem(atPath: request.source.path)
+        let engine = RenameEngine(journalURL: directory.appendingPathComponent("history.json"))
+        let batch = try await engine.apply([request])
+        let restored = try await engine.restore(batchID: batch.id, forward: false)
+        #expect(restored.entries[0].location == .original)
+        let after = try FileManager.default.attributesOfItem(atPath: request.source.path)
+        #expect(before[.creationDate] as? Date == after[.creationDate] as? Date)
+        #expect(before[.modificationDate] as? Date == after[.modificationDate] as? Date)
+        #expect(getxattr(request.source.path, "io.github.screenshot-renamer.test", nil, 0, 0, 0) == attribute.utf8.count)
+    }
+    @Test func crashBeforeMoveRecoversOriginal() async throws {
+        let directory = try fixture(); defer { try? FileManager.default.removeItem(at: directory) }
+        let request = try request(directory)
+        let journal = directory.appendingPathComponent("history.json")
+        let batch = RenameBatch(id: UUID(), date: Date(), entries: [HistoryEntry(id: UUID(), original: request.source, renamed: directory.appendingPathComponent(request.name), fingerprint: request.fingerprint, location: .original, pending: true)])
+        try JSONEncoder().encode([batch]).write(to: journal)
+        let recovered = try await RenameEngine(journalURL: journal).reconcile()
+        #expect(recovered[0].entries[0].location == .original)
+        #expect(!recovered[0].entries[0].pending)
+    }
+
 }
