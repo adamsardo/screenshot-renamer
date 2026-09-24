@@ -19,12 +19,14 @@ enum ImageServices {
     static func importURLs(_ urls: [URL], cleanShotOnly: Bool) -> ImportResult {
         var result = ImportResult()
         for url in urls {
+            if Task.isCancelled { break }
             do {
                 let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isAliasFileKey, .isPackageKey])
                 guard values.isSymbolicLink != true, values.isAliasFile != true, values.isPackage != true else { throw RenameError.unsupported }
                 if values.isDirectory == true {
                     let children = try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles, .skipsPackageDescendants])
                     for child in children.sorted(by: { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }) {
+                        if Task.isCancelled { break }
                         if cleanShotOnly && !child.lastPathComponent.hasPrefix("CleanShot ") { continue }
                         importOne(child, into: &result)
                     }

@@ -33,6 +33,7 @@ final class Workspace {
     var modelStatus = "Checking Apple Intelligence…"
     var modelAvailable = false
     private var job: Task<Void, Never>?
+    private var picker: NSOpenPanel?
     private let access = FolderAccess()
     private let naming = AppleNamingService()
     private let engine: RenameEngine
@@ -57,24 +58,32 @@ final class Workspace {
         }
     }
     func add(folder: Bool) {
+        guard !busy, picker == nil else { return }
         let panel = NSOpenPanel()
+        picker = panel
         panel.canChooseDirectories = folder; panel.canChooseFiles = !folder
         panel.allowsMultipleSelection = true
         panel.message = folder ? "Choose a folder containing images. Subfolders are not included." : "Choose PNG, JPEG or HEIC screenshots. Folder access is needed to apply new names."
         panel.prompt = "Add"
         panel.begin { [weak self] response in
-            guard response == .OK, let self else { return }
+            guard let self else { return }
+            self.picker = nil
+            guard response == .OK else { return }
             self.importItems(panel.urls, grantedFolder: folder)
         }
     }
     func grantFolder(for url: URL) {
+        guard !busy, picker == nil else { return }
         let panel = NSOpenPanel()
+        picker = panel
         panel.canChooseFiles = false; panel.canChooseDirectories = true
         panel.directoryURL = url.deletingLastPathComponent()
         panel.message = "Allow access to the containing folder so Screenshot Renamer can rename files and undo changes."
         panel.prompt = "Allow Folder Access"
         panel.begin { [weak self] response in
-            guard response == .OK, let self, let folder = panel.url else { return }
+            guard let self else { return }
+            self.picker = nil
+            guard response == .OK, let folder = panel.url else { return }
             do { try self.access.retain(folder, folder: true); self.replan(); Task { await self.refreshHistory(reconcile: true) } }
             catch { self.alert = error.localizedDescription }
         }
@@ -90,7 +99,8 @@ final class Workspace {
         busy = true; message = "Reading images…"
         let filter = cleanShotOnly
         job = Task {
-            let imported = await Task.detached(priority: .userInitiated) { ImageServices.importURLs(urls, cleanShotOnly: filter) }.value
+            let importTask = Task.detached(priority: .userInitiated) { ImageServices.importURLs(urls, cleanShotOnly: filter) }
+            let imported = await withTaskCancellationHandler { await importTask.value } onCancel: { importTask.cancel() }
             let existing = Set(rows.map { "\($0.fingerprint.device):\($0.fingerprint.inode)" })
             var seen = existing
             for image in imported.images {
@@ -102,7 +112,7 @@ final class Workspace {
             if selection == nil { selection = rows.first?.id }
             await refreshOccupancy()
             busy = false; job = nil
-            message = "\(rows.count) images added" + (skipped.isEmpty ? "." : " · \(skipped.count) items skipped.")
+            message = (Task.isCancelled ? "Import cancelled. " : "") + "\(rows.count) images added" + (skipped.isEmpty ? "." : " · \(skipped.count) items skipped.")
         }
     }
     func edit(id: UUID, title: String) {

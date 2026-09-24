@@ -1,0 +1,28 @@
+name: Package preview DMG
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Preview version, e.g. 0.1.0-preview.2'
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: xcode-27
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+      - name: Build ad-hoc preview DMG
+        env:
+          VERSION: ${{ inputs.version }}
+        run: ./scripts/package.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preview-dmg
+          path: |
+            dist/*.dmg
+            dist/*.sha256
+          retention-days: 14

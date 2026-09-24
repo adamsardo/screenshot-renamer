@@ -170,6 +170,7 @@ public actor RenameEngine {
 
     private func load() throws {
         guard !loaded else { return }
+        batches = []
         if FileManager.default.fileExists(atPath: journalURL.path) {
             batches = try JSONDecoder().decode([RenameBatch].self, from: Data(contentsOf: journalURL))
         }
@@ -191,6 +192,9 @@ public actor RenameEngine {
             if fcntl(fd, F_FULLFSYNC) != 0 { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
             let dir = open(folder.path, O_RDONLY)
             if dir >= 0 { defer { close(dir) }; guard fsync(dir) == 0 else { throw POSIXError(.EIO) } }
-        } catch { throw RenameError.journal(error.localizedDescription) }
+        } catch {
+            loaded = false // next operation must reload the last durable state
+            throw RenameError.journal(error.localizedDescription)
+        }
     }
 }
