@@ -28,6 +28,12 @@ The preliminary eight-image, image-only check had six responses and two refusals
 
 The proposed 80% useful-without-editing quality target has **not** been established by a blinded human assessment. Naming is labelled experimental. Preview and manual editing are part of the intended workflow.
 
+## Download verification and file-picker limitation
+
+The DMG downloaded back from GitHub Releases matched its published SHA-256 checksum. Its disk image and app signature verified, its embedded source revision matched the release tag, and the downloaded app launched with Apple Intelligence available.
+
+A subsequent **Add Images** check did not complete: the system picker sometimes left its confirmation button disabled with a valid PNG selected, and UI inspection sometimes timed out after dismissal. The process was idle in its normal event loop. An experimental SwiftUI file importer showed the same selection symptom; that experiment was reverted. The cause remains unresolved. The Mac then locked, preventing further native UI checks. **Use Add Folder for the workflow verified in this preview.** Single-image selection and its subsequent parent-folder permission flow remain a release-quality gate.
+
 ## Still unverified
 
 - Developer ID signing, Apple notarisation and first installation on a separate Mac.

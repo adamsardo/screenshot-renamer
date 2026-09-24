@@ -22,6 +22,8 @@ No subscription, in-app purchases, API key, external model server or separately 
 
 ## Use
 
+**Preview limitation:** use **Add Folder** for the verified import workflow. A final single-image picker check encountered a disabled confirmation button and remains unresolved. [Details](docs/VERIFICATION.md#download-verification-and-file-picker-limitation).
+
 1. **Add Images** or **Add Folder**, or drop files/folders into the window. PNG, JPEG and HEIC are supported. Folder imports are nonrecursive; an optional CleanShot filter is available on the empty screen.
 2. Choose **Generate Names**. Descriptions are generated one at a time on your Mac. You can cancel and keep completed suggestions.
 3. Select a row to preview its image and edit the description. Checkboxes control which images are included; selecting rows is separate. Manual edits are preserved unless you choose **Regenerate Name** for that image.
