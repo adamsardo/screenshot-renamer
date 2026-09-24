@@ -5,7 +5,7 @@ Checked on 24 September 2026 using an Apple silicon Mac, macOS 27.0 and Xcode 27
 ## Observed
 
 - **15 Swift tests pass** locally: capture dates and safe names; rename/undo/redo after reloading history; late conflicts; changed sources and partial failure; undo conflicts; symlink rejection; duplicate destinations and extension changes; crash recovery before/after a move; ambiguous recovery; Unicode/case conflicts; corrupt-history fail-closed behaviour; locked files; metadata preservation.
-- GitHub's `xcode-27` runner successfully built the packaged app and ran the initial safety suite. Every subsequent main-branch push reruns the full current suite; check the green workflow for the exact commit being downloaded.
+- GitHub's `xcode-27` runner successfully built the packaged app and ran all **15 tests**. Main-branch pushes and preview releases rerun the suite; check the workflow for the exact commit being downloaded.
 - The packaged **sandboxed app** imported 20 disposable copies of real screenshots through the native folder picker.
 - Direct on-device image-plus-OCR naming produced suggestions for **20/20** images in that run. No external AI endpoint or CLI was used.
 - The native inspector displayed an image and allowed a manual title edit before Apply.
@@ -15,6 +15,10 @@ Checked on 24 September 2026 using an Apple silicon Mac, macOS 27.0 and Xcode 27
 - Generation cancellation returned to the review state at the first post-click inspection, about 1.5 seconds later in that run. Completed suggestions and a manually edited title were retained. These are UI observations on one Mac, not performance guarantees.
 - The actual dark-mode review window, image inspector, filename editor, progress state and history sheet were inspected.
 - Packaged app signatures verify locally with sandbox and hardened-runtime entitlements. **Ad-hoc signature verification is not notarisation.**
+
+- The DMG checksum verification passed. It mounted with the app, Applications shortcut, licence and installation note.
+- The app was launched directly from that mounted DMG. Its source revision matched the build commit; persistent History successfully redid and undid the same 20-file batch. All 20 original filenames and image hashes were restored again.
+- Gatekeeper assessment **rejected** the ad-hoc app, as expected. No security setting was disabled or quarantine attribute removed. This is why the public download is clearly marked as an unnotarised developer preview.
 
 ## Quality findings
 
